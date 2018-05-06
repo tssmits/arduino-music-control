@@ -58,7 +58,6 @@ def setup():
   a.pinMode(BUTTON3_PIN, a.INPUT)
   a.pinMode(BUTTON4_PIN, a.INPUT)
   a.pinMode(BUTTON5_PIN, a.INPUT)
-  subprocess.call(["cmus-remote", '-C', 'vol 70%'])
 
 
 is_first_loop = False
@@ -182,6 +181,8 @@ def play_file(dirname):
   current_server = SERVER_CMUS
 
   try:
+    # volumo zero
+    subprocess.call(["cmus-remote", '-C', 'vol 0'])
     # stop playing if you're playing
     subprocess.call(["cmus-remote", '-p'])
     subprocess.call(["cmus-remote", '-s'])
@@ -193,6 +194,7 @@ def play_file(dirname):
     # subprocess.call(["cmus-remote", "/media/pi/LACIE/music/Storage2/audio/Pearl Jam - Ten (PBTHAL Vinyl Rip 2011)"])
     subprocess.call(["cmus-remote", dirname])
     # start playing baby
+    subprocess.call(["cmus-remote", '-C', 'vol 70%'])
     subprocess.call(["cmus-remote", '-p'])
     subprocess.call(["cmus-remote", '-n'])
     subprocess.call(["cmus-remote", '-p'])
