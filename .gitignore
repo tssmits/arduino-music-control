@@ -104,3 +104,10 @@ venv.bak/
 .mypy_cache/
 
 /nanpy-firmware
+
+
+.DS_Store
+._.DS_Store
+
+/shots/*
+!/shots/.keep
