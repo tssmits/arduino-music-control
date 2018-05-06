@@ -45,3 +45,4 @@ attach: false
 windows:
   - cmus: cmus
   - arduino: venv/bin/python music.py
+  - mopidy: mopidy
