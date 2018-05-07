@@ -12,13 +12,6 @@ from nanpy import SerialManager
 from common import a
 from musiclib import get_item_for_qr_code
 
-# "clean" quitting with C-c
-def signal_handler(signal, frame):
-    global interrupted
-    interrupted = True
-
-signal.signal(signal.SIGINT, signal_handler)
-
 
 # constants won't change. They're used here to set pin numbers:
 # the number of the pushbutton pin
@@ -40,6 +33,8 @@ POT_PIN = 2
 # variables will change:
 buttonState = 0    # variable for reading the pushbutton status
 
+looking_for_qr = False
+
 counter = 1
 
 pot_value_normalized = 0
@@ -60,12 +55,13 @@ def setup():
   a.pinMode(BUTTON5_PIN, a.INPUT)
 
 
-is_first_loop = False
+is_first_loop = True
 
 def loop():
   global is_first_loop
   global counter
   global pot_value_normalized
+  global looking_for_qr
 
   # read the state of the pushbutton value:
   buttonState = a.digitalRead(BUTTON_PIN)
@@ -101,50 +97,59 @@ def loop():
   # check if the pushbutton is pressed. If it is, the buttonState is HIGH:
   if (buttonState == a.HIGH or (SCAN_ON_FIRST_LOOP and is_first_loop)):
     is_first_loop = False
+    looking_for_qr = True
 
+  if looking_for_qr:
     # turn LED on:
     a.digitalWrite(LED_PIN, a.HIGH)
 
-    qr_found = False
-    while not qr_found:
-      filename = "shots/photo{:08d}.jpg".format(counter)
+    filename = "shots/photo{:08d}.jpg".format(counter)
 
-      # Make sure we never run out of diskspace and reset
-      # file counter when we've reached our preconfigured max.
-      if counter < MAX_SAVED_SHOTS:
-        counter += 1
-      else:
-        counter = 1
+    # Make sure we never run out of diskspace and reset
+    # file counter when we've reached our preconfigured max.
+    if counter < MAX_SAVED_SHOTS:
+      counter += 1
+    else:
+      counter = 1
 
-      # Remove if exists
-      try:
-        os.remove(filename)
-      except OSError:
-        pass
+    # Remove if exists
+    try:
+      os.remove(filename)
+    except OSError:
+      pass
 
-      # Capture webcam image and write to filename
-      subprocess.check_output(["fswebcam", "-r", "1280x720", filename])
+    # Capture webcam image and write to filename
+    subprocess.check_output(["fswebcam", "-r", "1280x720", filename])
 
-      try:
-        # Capture output from stdout "QR-Code:Pearl Jam - Ten"
-        msg = subprocess.check_output(['zbarimg', filename])
+    try:
+      # ascii art! (too much time)
+      term_height = int(subprocess.check_output(["tput", "lines"]))
+      # get something between 10 and term_height
+      height = min(term_height, max(10, term_height - 10))
+      subprocess.call(['jp2a', '--height={}'.format(height), '--colors', '--fill', filename])
+    except subprocess.CalledProcessError as e:
+      print(e)
 
-        # turn of the light
-        a.digitalWrite(LED_PIN, a.HIGH)
+    try:
+      # Capture output from stdout "QR-Code:Pearl Jam - Ten"
+      msg = subprocess.check_output(['zbarimg', filename])
 
-        # stdout had a newline or something, so strip() is applied here
-        # to remove it.
-        msg = msg.strip()
-        # let the loop know we found the qr code
-        qr_found = True
-        # now let's see if we can play that qr code!
-        pass_on_the_good_music(msg)
-      except subprocess.CalledProcessError as e:
-        print("no qr code embedded")
+      # turn of the light
+      a.digitalWrite(LED_PIN, a.LOW)
+
+      # stdout had a newline or something, so strip() is applied here
+      # to remove it.
+      msg = msg.strip()
+      # let the loop know we found the qr code
+      looking_for_qr = False
+      # now let's see if we can play that qr code!
+      pass_on_the_good_music(msg)
+    except subprocess.CalledProcessError as e:
+      print("no qr code embedded")
 
   else:
     # turn LED off:
-    a.digitalWrite(LED_PIN, a.LOW);
+    a.digitalWrite(LED_PIN, a.LOW)
 
 
 def pass_on_the_good_music(msg_from_qrcode):
@@ -252,8 +257,17 @@ def exit_if_cmus_is_not_running():
   print("cmus (probably) not running, quitting...")
   quit()
 
+
+# "clean" quitting with C-c
+def signal_handler(signal, frame):
+    global interrupted
+    interrupted = True
+
+signal.signal(signal.SIGINT, signal_handler)
+
 interrupted = False
-if __name__ == '__main__':
+def run():
+  global interrupted
 
   # we only start through tmux so cmus should always be running
   # exit_if_cmus_is_not_running()
@@ -266,3 +280,7 @@ if __name__ == '__main__':
     if interrupted:
       print("Gotta go")
       break
+
+
+if __name__ == '__main__':
+  run()
