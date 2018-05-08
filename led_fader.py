@@ -1,6 +1,6 @@
 class LedFader(object):
   def __init__(self, freq):
-    self.freq = float(freq)
+    self.freq = float(freq) * 2
     self.millis = None
     self.direction = 1
 

@@ -5,6 +5,7 @@ import time
 
 from nanpy import ArduinoApi
 from nanpy import SerialManager
+import nanpy.serialmanager
 
 from led_blinker import LedBlinker
 from led_fader import LedFader
@@ -43,8 +44,7 @@ class ArduinoController(object):
     self.timestamps = {pin: None for pin in BUTTON_PINS}
     self.last_led_change = self._millis()
 
-    # self.ledcontroller = LedBlinker(freq=100, countdown=10)
-    self.ledcontroller = LedFader(freq=10)
+    self.set_led_fading()
 
   def setup(self):
     self.a.pinMode(LED_PIN, self.a.OUTPUT)
@@ -72,6 +72,18 @@ class ArduinoController(object):
         self._keydown(pin)
 
     self._led_frame()
+
+  def set_led_controller(self, led_controller):
+    self.led_controller = led_controller
+
+  def set_led_blinking(self):
+    self.set_led_controller(LedBlinker(freq=10))
+
+  def set_led_fading(self):
+    self.set_led_controller(LedFader(freq=0.25))
+
+  def darken_led(self):
+    self.set_led_controller(None)
 
   def _keypress(self, pin):
     print('fire_keypress {}'.format(pin))
@@ -102,8 +114,11 @@ class ArduinoController(object):
     return int(time.time() * 1000)
 
   def _led_frame(self):
-    brightness = self.ledcontroller.frame(self._millis())
-    self.a.analogWrite(LED_PIN, brightness)
+    if self.led_controller is None:
+      self.a.analogWrite(LED_PIN, 0)
+    else:
+      brightness = self.led_controller.frame(self._millis())
+      self.a.analogWrite(LED_PIN, brightness)
 
 
 def observert(type, pin=None):
@@ -122,5 +137,9 @@ if __name__ == '__main__':
         c.loop()
 
     except serial.serialutil.SerialException as e:
+      print(e)
+      time.sleep(1)
+
+    except nanpy.serialmanager.SerialManagerError as e:
       print(e)
       time.sleep(1)
