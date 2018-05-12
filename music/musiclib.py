@@ -1,7 +1,7 @@
 import csv
 
 def get_item_for_qr_code(msg):
-  with open('map.csv', 'rb') as csvfile:
+  with open('../map.csv', 'rb') as csvfile:
     mapreader = csv.reader(csvfile, delimiter=',', quotechar='"')
     for row in mapreader:
       if row[0] == msg:
