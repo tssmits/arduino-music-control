@@ -4,6 +4,8 @@ import threading
 import time
 import zmq
 
+import arduino.controller
+
 class PublisherThread(threading.Thread):
   def __init__(self):
     threading.Thread.__init__(self)

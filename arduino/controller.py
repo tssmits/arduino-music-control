@@ -7,8 +7,8 @@ from nanpy import ArduinoApi
 from nanpy import SerialManager
 import nanpy.serialmanager
 
-from led_blinker import LedBlinker
-from led_fader import LedFader
+from arduino.led_blinker import LedBlinker
+from arduino.led_fader import LedFader
 
 # indicator led pin
 LED_PIN = 9
