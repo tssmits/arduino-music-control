@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import serial.serialutil
+import threading
 import time
+import zmq
 
 from nanpy import ArduinoApi
 from nanpy import SerialManager
@@ -9,66 +11,69 @@ import nanpy.serialmanager
 
 from arduino.led_blinker import LedBlinker
 from arduino.led_fader import LedFader
+from arduino.led_single import LedSingle
 
-# indicator led pin
-LED_PIN = 9
+# default debounce threshold in milliseconds
+DEFAULT_DEBOUNCE = 25
 
-# individual pins
-PIN_READ_QR = 2
-PIN_PLAY = 4
-PIN_STOP = 7
-PIN_PREV = 8
-PIN_NEXT = 12
+# default led pin
+DEFAULT_LED_PIN = 9
 
-# array of all the pins
-BUTTON_PINS = [PIN_READ_QR, PIN_PLAY, PIN_STOP, PIN_NEXT, PIN_PREV]
-
-# debounce threshold in milliseconds
-DEBOUNCE = 25
-
-# events
-E_READ_QR = 'read_qr'
-E_PLAY = 'play'
-E_STOP = 'stop'
-E_NEXT = 'next'
-E_PREV = 'prev'
-EVENTS = [E_READ_QR, E_PLAY, E_STOP, E_NEXT, E_PREV]
-
+# replies
+REP_OK = b'ok'
+REP_UNKNOWN = b'unknown'
 
 class ArduinoController(object):
-  callbacks = []
+  serialManager = None
+  led_controller = None
 
-  def __init__(self):
-    self.connection = SerialManager()
-    self.a = ArduinoApi(connection=self.connection)
-    self.timestamps = {pin: None for pin in BUTTON_PINS}
-    self.last_led_change = self._millis()
+  def __init__(self, zmq_context=None, debounce=DEFAULT_DEBOUNCE, button_pins=[], led_pin=DEFAULT_LED_PIN):
+    self.debounce = debounce
+    self.button_pins = button_pins
+    self.led_pin = led_pin
 
-    self.set_led_fading()
+    self.zmq_context = zmq_context or zmq.Context.instance()
+
+    self.zmq_buttons_pub = self.zmq_context.socket(zmq.PUB)
+    self.zmq_buttons_pub.bind("inproc://arduino/buttons_pub")
+
+    self.buttons_timestamps = {pin: None for pin in self.button_pins}
+
+    self.zmq_commands_rep = self.zmq_context.socket(zmq.REP)
+    self.zmq_commands_rep.bind("inproc://arduino/commands_rep")
+
+    t = threading.Thread(target=self.zmq_commands_rep_thread, daemon=True)
+    t.start()
+
+  def connect(self):
+    # close old connection if exists
+    if self.serialManager:
+      self.serialManager.close()
+
+    # make new connection
+    self.serialManager = SerialManager()
+    self.a = ArduinoApi(connection=self.serialManager)
 
   def setup(self):
-    self.a.pinMode(LED_PIN, self.a.OUTPUT)
-    for pin in BUTTON_PINS:
+    self.a.pinMode(self.led_pin, self.a.OUTPUT)
+    for pin in self.button_pins:
       self.a.pinMode(pin, self.a.INPUT)
 
-  def subscribe(self, type, fn_callback):
-    self.callbacks.append({'type': type, 'fn_callback': fn_callback})
-
   def loop(self):
-    for pin in BUTTON_PINS:
+    for pin in self.button_pins:
 
       if self.a.digitalRead(pin) == self.a.HIGH:
-        if self.timestamps[pin] is None:
+        if self.buttons_timestamps[pin] is None:
           self._keypress(pin)
-        self.timestamps[pin] = self._millis()
+        self.buttons_timestamps[pin] = self._get_millis()
 
       else:
-        if self.timestamps[pin] is not None:
-          if self.timestamps[pin] + DEBOUNCE < self._millis():
+        if self.buttons_timestamps[pin] is not None:
+          if self.buttons_timestamps[pin] + self.debounce < self._get_millis():
             self._keyup(pin)
-            self.timestamps[pin] = None
+            self.buttons_timestamps[pin] = None
 
-      if self.timestamps[pin] is not None:
+      if self.buttons_timestamps[pin] is not None:
         self._keydown(pin)
 
     self._led_frame()
@@ -82,64 +87,58 @@ class ArduinoController(object):
   def set_led_fading(self):
     self.set_led_controller(LedFader(freq=0.25))
 
-  def darken_led(self):
-    self.set_led_controller(None)
+  def set_led_off(self):
+    self.set_led_controller(LedSingle(brightness=0))
+
+  def set_led_on(self):
+    self.set_led_controller(LedSingle(brightness=255))
+
+  def set_led_blink_once(self):
+    self.set_led_controller(LedBlinker(freq=25, countdown=1))
 
   def _keypress(self, pin):
-    print('fire_keypress {}'.format(pin))
-    self._fire(self._get_event_for_pin(pin), pin=pin)
+    evt = 'keypress={}'.format(pin).encode()
+    self.zmq_buttons_pub.send(evt)
 
   def _keydown(self, pin):
-    # print('fire_keydown {}'.format(pin))
-    pass
+    evt = 'keydown={}'.format(pin).encode()
+    self.zmq_buttons_pub.send(evt)
 
   def _keyup(self, pin):
-    print('fire_keyup {}'.format(pin))
+    evt = 'keyup={}'.format(pin).encode()
+    self.zmq_buttons_pub.send(evt)
 
-  def _get_event_for_pin(self, pin):
-    return {
-      PIN_READ_QR: E_READ_QR,
-      PIN_PLAY: E_PLAY,
-      PIN_STOP: E_STOP,
-      PIN_NEXT: E_NEXT,
-      PIN_PREV: E_PREV
-    }[pin]
-
-  def _fire(self, type, **attrs):
-    for cb in self.callbacks:
-      if cb['type'] == type:
-        cb['fn_callback'](type=type, **attrs)
-
-  def _millis(self):
+  def _get_millis(self):
     return int(time.time() * 1000)
 
   def _led_frame(self):
     if self.led_controller is None:
-      self.a.analogWrite(LED_PIN, 0)
+      self.a.analogWrite(self.led_pin, 0)
     else:
-      brightness = self.led_controller.frame(self._millis())
-      self.a.analogWrite(LED_PIN, brightness)
+      brightness = self.led_controller.frame(self._get_millis())
+      self.a.analogWrite(self.led_pin, brightness)
 
+  def zmq_commands_rep_thread(self):
+    while True:
+      cmd = self.zmq_commands_rep.recv()
 
-def observert(type, pin=None):
-  print('observer={} pin={}'.format(type, pin))
+      reply = REP_UNKNOWN
 
-if __name__ == '__main__':
-  while True:
-    try:
-      c = ArduinoController()
+      if cmd == b'led_blink':
+        self.set_led_blinking()
+        reply = REP_OK
+      if cmd == b'led_blink_once':
+        self.set_led_blink_once()
+        reply = REP_OK
+      elif cmd == b'led_fade':
+        self.set_led_fading()
+        reply = REP_OK
+      elif cmd == b'led_on':
+        self.set_led_on()
+        reply = REP_OK
+      elif cmd == b'led_off':
+        self.set_led_off()
+        reply = REP_OK
 
-      for e in EVENTS:
-        c.subscribe(e, observert)
-
-      c.setup()
-      while True:
-        c.loop()
-
-    except serial.serialutil.SerialException as e:
-      print(e)
-      time.sleep(1)
-
-    except nanpy.serialmanager.SerialManagerError as e:
-      print(e)
-      time.sleep(1)
+      # send so we can receive the next message
+      self.zmq_commands_rep.send(reply)
