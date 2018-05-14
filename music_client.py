@@ -98,9 +98,10 @@ def start_the_good_music(msg_from_qrcode):
     print("yes! it's:")
     print(item['uri'])
     play_item(item)
+    return True
   else:
     print("sadly, no... try again!")
-    return
+    return False
 
 def stop_all():
   try:
@@ -229,16 +230,29 @@ def button_thread():
       else:
         led_blink_three_times()
 
+def user_input_thread():
+  while True:
+    cmd = input('cmd: ').strip()
+
+    if 'QR-Code:' == cmd[:8]:
+      start_the_good_music(cmd)
+    else:
+      print("Unknown command: {}".format(cmd))
+
 bt = threading.Thread(target=button_thread, daemon=True)
 bt.start()
+
+uit = threading.Thread(target=user_input_thread, daemon=True)
+uit.start()
 
 def run():
   print("OK make shots!")
   led_fade()
   while True:
-    bt.join(1)
-    if not bt.isAlive():
-      exit(1)
+    for t in [bt, uit]:
+      t.join(0.1)
+      if not t.isAlive():
+        exit(1)
 
 if __name__ == '__main__':
   run()
