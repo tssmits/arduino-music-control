@@ -19,10 +19,6 @@ DEFAULT_DEBOUNCE = 25
 # default led pin
 DEFAULT_LED_PIN = 9
 
-# replies
-REP_OK = b'ok'
-REP_UNKNOWN = b'unknown'
-
 class ArduinoController(object):
   serialManager = None
   led_controller = None
@@ -38,12 +34,6 @@ class ArduinoController(object):
     self.zmq_buttons_pub.bind("inproc://arduino/buttons_pub")
 
     self.buttons_timestamps = {pin: None for pin in self.button_pins}
-
-    self.zmq_commands_rep = self.zmq_context.socket(zmq.REP)
-    self.zmq_commands_rep.bind("inproc://arduino/commands_rep")
-
-    t = threading.Thread(target=self.zmq_commands_rep_thread, daemon=True)
-    t.start()
 
   def connect(self):
     # close old connection if exists
@@ -81,8 +71,8 @@ class ArduinoController(object):
   def set_led_controller(self, led_controller):
     self.led_controller = led_controller
 
-  def set_led_blinking(self):
-    self.set_led_controller(LedBlinker(freq=10))
+  def set_led_blinking(self, countdown=None):
+    self.set_led_controller(LedBlinker(freq=10, countdown=countdown))
 
   def set_led_fading(self):
     self.set_led_controller(LedFader(freq=0.25))
@@ -117,28 +107,3 @@ class ArduinoController(object):
     else:
       brightness = self.led_controller.frame(self._get_millis())
       self.a.analogWrite(self.led_pin, brightness)
-
-  def zmq_commands_rep_thread(self):
-    while True:
-      cmd = self.zmq_commands_rep.recv()
-
-      reply = REP_UNKNOWN
-
-      if cmd == b'led_blink':
-        self.set_led_blinking()
-        reply = REP_OK
-      if cmd == b'led_blink_once':
-        self.set_led_blink_once()
-        reply = REP_OK
-      elif cmd == b'led_fade':
-        self.set_led_fading()
-        reply = REP_OK
-      elif cmd == b'led_on':
-        self.set_led_on()
-        reply = REP_OK
-      elif cmd == b'led_off':
-        self.set_led_off()
-        reply = REP_OK
-
-      # send so we can receive the next message
-      self.zmq_commands_rep.send(reply)

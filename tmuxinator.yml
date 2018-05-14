@@ -4,7 +4,7 @@ name: music
 root: /home/pi/Repos/versusone/arduino-music-control
 
 # Optional tmux socket
-# socket_name: foo
+# socket_name: arduino-music
 
 # Runs before everything. Use it to start daemons etc.
 # pre: sudo /etc/rc.d/mysqld start
@@ -44,5 +44,5 @@ attach: false
 
 windows:
   - cmus: cmus
-  - arduino: venv/bin/python music.py
+  - client: ./client.sh
   - mopidy: mopidy

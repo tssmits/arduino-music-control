@@ -9,6 +9,7 @@ import arduino.controller
 import nanpy.serialmanager
 
 
+# pins
 LED_PIN = 9
 PIN_READ_QR = 2
 PIN_PLAY = 4
@@ -16,11 +17,17 @@ PIN_STOP = 7
 PIN_PREV = 8
 PIN_NEXT = 12
 
+# events
 EVT_READ_QR = b'read_qr'
 EVT_PLAY = b'play'
 EVT_STOP = b'stop'
 EVT_PREV = b'prev'
 EVT_NEXT = b'next'
+
+# replies
+REP_OK = b'ok'
+REP_UNKNOWN = b'unknown'
+
 
 def parse_event(evt_binary):
   evt = evt_binary.decode()
@@ -41,6 +48,36 @@ def parse_event(evt_binary):
 
   return None
 
+def pass_cmd_onto_arduino(c, cmd):
+  reply = REP_UNKNOWN
+
+  if cmd == b'led_blink':
+    c.set_led_blinking()
+    reply = REP_OK
+  if cmd == b'led_blink_once':
+    c.set_led_blink_once()
+    reply = REP_OK
+  elif cmd == b'led_fade':
+    c.set_led_fading()
+    reply = REP_OK
+  elif cmd == b'led_on':
+    c.set_led_on()
+    reply = REP_OK
+  elif cmd == b'led_off':
+    c.set_led_off()
+    reply = REP_OK
+  else:
+    cmd_str = cmd.decode()
+    if cmd_str[:10] == 'led_blink=':
+      try:
+        countdown = max(1, int(cmd_str[10:]))
+        c.set_led_blinking(countdown=countdown)
+        reply = REP_OK
+      except ValueError:
+        pass
+
+  return reply
+
 def button_thread():
   global zmq_context
 
@@ -58,48 +95,43 @@ def button_thread():
       zmq_driver_button_pub.send(evt)
       print(evt)
     else:
-      print('Unknown event: {}'.format(evt_raw))
+      print('Not bound to event: {}'.format(evt_raw))
 
-def command_thread():
+def command_thread(c):
   global zmq_context
-
-  zmq_arduino_command_req = zmq_context.socket(zmq.REQ)
-  zmq_arduino_command_req.connect('inproc://arduino/commands_rep')
 
   zmq_driver_command_rep = zmq_context.socket(zmq.REP)
   zmq_driver_command_rep.bind('tcp://*:5556')
 
   while True:
     cmd = zmq_driver_command_rep.recv()
-    zmq_arduino_command_req.send(cmd)
-    reply = zmq_arduino_command_req.recv()
+    reply = pass_cmd_onto_arduino(c, cmd)
     zmq_driver_command_rep.send(reply)
 
-zmq_context = zmq.Context.instance()
+def program_thread(c):
+  c.connect()
+  c.setup()
 
-bt = threading.Thread(target=button_thread, daemon=True)
-bt.start()
+  print("Ready!")
+  while True:
+    c.loop()
 
-ct = threading.Thread(target=command_thread, daemon=True)
-ct.start()
+if __name__ == '__main__':
+  c = arduino.controller.ArduinoController(led_pin=LED_PIN, button_pins=[PIN_READ_QR, PIN_PLAY, PIN_STOP, PIN_NEXT, PIN_PREV])
 
-c = arduino.controller.ArduinoController(led_pin=LED_PIN,
-  button_pins=[PIN_READ_QR, PIN_PLAY, PIN_STOP, PIN_NEXT, PIN_PREV])
+  zmq_context = zmq.Context.instance()
 
-running = True
-while running:
-  try:
-    c.connect()
-    c.setup()
+  bt = threading.Thread(target=button_thread, daemon=True)
+  bt.start()
 
-    print("Ready!")
-    while True:
-      c.loop()
+  ct = threading.Thread(target=command_thread, daemon=True, args=[c])
+  ct.start()
 
-  except serial.serialutil.SerialException as e:
-    print(e)
-    time.sleep(1)
+  pt = threading.Thread(target=program_thread, daemon=True, args=[c])
+  pt.start()
 
-  except nanpy.serialmanager.SerialManagerError as e:
-    print(e)
-    time.sleep(1)
+  while True:
+    for t in [bt, ct, pt]:
+      t.join(0.1)
+      if not t.isAlive():
+        exit(1)
