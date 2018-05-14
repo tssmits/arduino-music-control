@@ -43,6 +43,5 @@ attach: false
 # post: tmux -CC attach -t music
 
 windows:
-  - cmus: cmus
   - client: ./client.sh
   - mopidy: mopidy
