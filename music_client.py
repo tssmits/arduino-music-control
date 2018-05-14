@@ -236,6 +236,14 @@ def user_input_thread():
 
     if 'QR-Code:' == cmd[:8]:
       start_the_good_music(cmd)
+    elif 'next' == cmd:
+      btn_next()
+    elif 'prev' == cmd:
+      btn_prev()
+    elif 'stop' == cmd:
+      btn_stop()
+    elif 'pause' == cmd:
+      btn_play()
     else:
       print("Unknown command: {}".format(cmd))
 
