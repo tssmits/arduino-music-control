@@ -16,7 +16,7 @@ zmq_command_req.connect('tcp://127.0.0.1:5556')
 
 def button_thread():
   while True:
-    print(zmq_button_sub.recv())
+    logger.info(zmq_button_sub.recv())
 
 def command_thread():
   global running
@@ -31,12 +31,12 @@ def command_thread():
     if cmd in [b'led_on', b'led_off', b'led_fade', b'led_blink', b'led_blink_once']:
       zmq_command_req.send(cmd)
       reply = zmq_command_req.recv()
-      print('Reply: {}'.format(reply))
+      logger.info('Reply: {}'.format(reply))
     elif cmd in [b'exit', b'quit']:
       running = False
     else:
-      print('Unknown command: {}'.format(cmd_orig))
-      print('Use led_on, led_off, led_fade, led_blink or led_blink_once')
+      logger.info('Unknown command: {}'.format(cmd_orig))
+      logger.info('Use led_on, led_off, led_fade, led_blink or led_blink_once')
 
 bt = threading.Thread(target=button_thread, daemon=True)
 bt.start()
@@ -48,4 +48,4 @@ running = True
 while running:
   pass
 
-print("\nDone")
+logger.info("\nDone")

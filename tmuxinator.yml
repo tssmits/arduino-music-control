@@ -43,5 +43,6 @@ attach: false
 # post: tmux -CC attach -t music
 
 windows:
-  - client: ./client.sh
   - mopidy: mopidy
+  - driver: ./driver.sh
+  - client: ./client.sh

@@ -1,13 +1,18 @@
 #!./venv/bin/python
 
+import logging
 import threading
 import time
+import sys
 import zmq
 import serial.serialutil
 
 import arduino.controller
 import nanpy.serialmanager
 
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # pins
 LED_PIN = 9
@@ -93,9 +98,9 @@ def button_thread():
     evt = parse_event(evt_raw)
     if evt:
       zmq_driver_button_pub.send(evt)
-      print(evt)
+      logger.info(evt)
     else:
-      print('Not bound to event: {}'.format(evt_raw))
+      logger.info('Not bound to event: {}'.format(evt_raw))
 
 def command_thread(c):
   global zmq_context
@@ -103,16 +108,20 @@ def command_thread(c):
   zmq_driver_command_rep = zmq_context.socket(zmq.REP)
   zmq_driver_command_rep.bind('tcp://*:5556')
 
+  pass_cmd_onto_arduino(c, b'led_fade')
+
   while True:
     cmd = zmq_driver_command_rep.recv()
+    logger.info('Received command: {}'.format(cmd.decode()))
     reply = pass_cmd_onto_arduino(c, cmd)
+    logger.info('Arduino reply: {}'.format(reply.decode()))
     zmq_driver_command_rep.send(reply)
 
 def program_thread(c):
   c.connect()
   c.setup()
 
-  print("Ready!")
+  logger.info("Ready!")
   while True:
     c.loop()
 

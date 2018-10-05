@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
+import logging
 import serial.serialutil
+import sys
 import threading
 import time
 import zmq
@@ -12,6 +14,10 @@ import nanpy.serialmanager
 from arduino.led_blinker import LedBlinker
 from arduino.led_fader import LedFader
 from arduino.led_single import LedSingle
+
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # default debounce threshold in milliseconds
 DEFAULT_DEBOUNCE = 25
