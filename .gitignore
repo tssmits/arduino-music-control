@@ -113,3 +113,5 @@ venv.bak/
 !/shots/.keep
 
 /venv.old
+
+.vscode
